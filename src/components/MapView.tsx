@@ -1,4 +1,3 @@
-// src/components/MapView.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -30,7 +29,6 @@ interface MapViewProps {
   friends: FriendLocation[]
 }
 
-// Custom component to handle camera logic
 function MapController({ center }: { center: [number, number] }) {
   const map = useMap()
   const [initialSnap, setInitialSnap] = useState(false)
@@ -41,9 +39,8 @@ function MapController({ center }: { center: [number, number] }) {
       map.flyTo(center, 15, { animate: true, duration: 1.5 })
       setInitialSnap(true)
     }
-  },[center, initialSnap, map])
+  }, [center, initialSnap, map])
 
-  // Custom button to recenter manually
   return (
     <button 
       onClick={() => map.flyTo(center, 15, { animate: true })}
@@ -57,7 +54,7 @@ function MapController({ center }: { center: [number, number] }) {
 
 export default function MapView({ position, route, friends }: MapViewProps) {
   return (
-    <div className="w-full h-full relative">
+    <div className="w-full h-full relative z-0">
       <MapContainer 
         center={position} 
         zoom={15} 
