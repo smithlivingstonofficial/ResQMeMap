@@ -1,12 +1,70 @@
 @import "tailwindcss";
 
-html,
-body {
-  height: 100%;
-  width: 100%;
+:root {
+  --map-ui-glass: rgba(255, 255, 255, 0.8);
+  --map-ui-blur: blur(12px);
 }
 
-.leaflet-container {
-  height: 100vh;
-  width: 100%;
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100dvh; /* Dynamic viewport height for mobile */
+  overflow: hidden;
+  background-color: #0f172a;
 }
+
+/* Custom Pulsating Markers */
+.user-marker-pulse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.user-core {
+  width: 16px;
+  height: 16px;
+  background: #3b82f6;
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+  z-index: 2;
+}
+.user-radar {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: rgba(59, 130, 246, 0.3);
+  border-radius: 50%;
+  animation: radar-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.friend-marker-premium {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.friend-avatar-box {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px; /* Bento rounded style */
+  background: linear-gradient(135deg, #f43f5e, #fb7185);
+  border: 2px solid white;
+  box-shadow: 0 8px 20px rgba(244, 63, 94, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 800;
+  font-size: 16px;
+}
+
+@keyframes radar-ping {
+  75%, 100% { transform: scale(4); opacity: 0; }
+}
+
+/* Hide Leaflet default attribution on tiny screens */
+@media (max-width: 640px) {
+  .leaflet-control-attribution { display: none !important; }
+}
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }

@@ -1,30 +1,34 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap, Tooltip, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap, Tooltip } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { FriendLocation } from '@/app/dashboard/page'
 
-const myIcon = L.icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize:[25, 41],
-  iconAnchor:[12, 41],
-  popupAnchor:[1, -34],
+// --- CUSTOM MARKERS ---
+const myDivIcon = L.divIcon({
+  className: 'user-marker-pulse',
+  html: `<div class="user-radar"></div><div class="user-radar"></div><div class="user-core"></div>`,
+  iconSize: [24, 24],
+  iconAnchor: [12, 12]
 })
 
-const friendIcon = L.icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-  iconSize:[25, 41],
-  iconAnchor:[12, 41],
-  popupAnchor:[1, -34],
+const createFriendIcon = (name: string) => L.divIcon({
+  className: 'friend-marker-premium',
+  html: `
+    <div class="friend-avatar-box">
+      ${name.charAt(0).toUpperCase()}
+      <div class="friend-live-dot"></div>
+    </div>
+  `,
+  iconSize: [42, 42],
+  iconAnchor: [21, 42], 
+  popupAnchor: [0, -45]
 })
 
 interface MapViewProps {
-  position:[number, number]
+  position: [number, number]
   accuracy: number
   route: [number, number][]
   friends: FriendLocation[]
@@ -32,176 +36,189 @@ interface MapViewProps {
   onClearFocus?: () => void
 }
 
-function MapController({ center, focusLocation, onClearFocus }: { center: [number, number], focusLocation:[number, number] | null, onClearFocus?: () => void }) {
+function MapController({ center, focusLocation, onClearFocus }: any) {
   const map = useMap()
-  const[initialSnap, setInitialSnap] = useState(false)
+  const [initialSnap, setInitialSnap] = useState(false)
 
   useEffect(() => {
     if (!initialSnap) {
-      map.flyTo(center, 16, { animate: true, duration: 1.5 })
+      map.flyTo(center, 18, { animate: true, duration: 2.5 })
       setInitialSnap(true)
     }
-  },[center, initialSnap, map])
+  }, [center, initialSnap, map])
 
   useEffect(() => {
     if (focusLocation) {
-      map.flyTo(focusLocation, 15, { animate: true, duration: 1.5 })
+      // We can safely zoom to 20 now because maxNativeZoom handles the scaling
+      map.flyTo(focusLocation, 20, { animate: true, duration: 1.5 })
     }
   }, [focusLocation, map])
 
   return (
-    <button 
-      onClick={() => {
-        map.flyTo(center, 16, { animate: true, duration: 1.0 })
-        if (onClearFocus) onClearFocus()
-      }}
-      className="absolute bottom-24 md:bottom-8 right-4 md:right-auto md:left-6 z-[1000] bg-white text-blue-600 p-3.5 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.15)] transition-transform hover:scale-105 flex items-center justify-center border border-gray-100"
-      title="Recenter on me & Clear Route"
-    >
-      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-    </button>
+    <div className="absolute bottom-8 right-4 z-[1000]">
+      <button 
+        onClick={() => { map.flyTo(center, 20, { animate: true }); if (onClearFocus) onClearFocus(); }}
+        className="bg-white text-gray-800 w-12 h-12 rounded-2xl shadow-xl hover:scale-105 transition-transform border border-gray-100 flex items-center justify-center group"
+      >
+        <svg className="w-6 h-6 text-blue-600 group-hover:text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.242-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </button>
+    </div>
   )
 }
 
 export default function MapView({ position, accuracy, route, friends, focusLocation, onClearFocus }: MapViewProps) {
   const [roadRoute, setRoadRoute] = useState<[number, number][] | null>(null)
-  const [mapStyle, setMapStyle] = useState<'streets' | 'satellite'>('streets')
+  const [activeLayer, setActiveLayer] = useState('standard')
+  const [isLayerMenuOpen, setIsLayerMenuOpen] = useState(false)
 
   useEffect(() => {
-    if (!focusLocation || !position) {
-      setRoadRoute(null)
-      return
-    }
-
+    if (!focusLocation || !position) { setRoadRoute(null); return }
     const timer = setTimeout(async () => {
       try {
-        const startLng = position[1]
-        const startLat = position[0]
-        const endLng = focusLocation[1]
-        const endLat = focusLocation[0]
-
-        const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`
-        
+        const url = `https://router.project-osrm.org/route/v1/driving/${position[1]},${position[0]};${focusLocation[1]},${focusLocation[0]}?overview=full&geometries=geojson`
         const res = await fetch(url)
         const data = await res.json()
-        
-        if (data.routes && data.routes.length > 0) {
-          const coords = data.routes[0].geometry.coordinates.map((c: [number, number]) =>[c[1], c[0]])
-          setRoadRoute(coords)
-        }
-      } catch (error) {
-        console.error("OSRM Route Error:", error)
-      }
+        if (data.routes?.[0]) setRoadRoute(data.routes[0].geometry.coordinates.map((c: any) => [c[1], c[0]]))
+      } catch (e) { console.error(e) }
     }, 1000)
-
     return () => clearTimeout(timer)
   }, [focusLocation, position])
 
-  // UPDATED TILE CONFIGURATION
-  const tiles = {
-    streets: {
-      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19
-    },
-    satellite: {
-      // Using Esri World Imagery (High Res Satellite)
-      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-      maxZoom: 18 // IMPORTANT: Satellite tiles often go blank if you zoom past 18
-    }
+  const getCurrentIcon = () => {
+    if (activeLayer === 'satellite') return (
+      <div className="w-full h-full rounded-xl overflow-hidden relative border-2 border-white">
+        <div className="absolute inset-0 bg-[url('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/0/0/0')] bg-cover"></div>
+      </div>
+    )
+    if (activeLayer === 'dark') return (
+      <div className="w-full h-full rounded-xl bg-gray-800 border-2 border-gray-600 flex items-center justify-center">
+        <svg className="w-6 h-6 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+      </div>
+    )
+    return (
+      <div className="w-full h-full rounded-xl bg-gray-100 border-2 border-white flex items-center justify-center relative overflow-hidden">
+         <div className="absolute top-0 bottom-0 left-1/2 w-2 bg-white rotate-12 transform scale-125 border-l border-r border-gray-300"></div>
+         <div className="absolute top-1/2 left-0 right-0 h-2 bg-white -rotate-12 transform scale-125 border-t border-b border-gray-300"></div>
+      </div>
+    )
   }
 
   return (
-    <div className="w-full h-full relative z-0">
+    <div className="w-full h-full relative z-0 bg-gray-100">
       
-      {/* 
-         FIX: Increased z-index to 1000 so it sits above markers/polylines.
-         Adjusted 'top' to 28 (112px) to ensure it clears the floating header.
-      */}
-      <div className="absolute top-28 right-4 z-[1000]">
+      {/* LAYER SWITCHER - TOP RIGHT */}
+      <div className="absolute top-20 right-4 z-[1000] flex flex-col items-end gap-2">
+        
+        {isLayerMenuOpen && (
+          <div className="bg-white/90 backdrop-blur-xl p-2 rounded-2xl shadow-2xl border border-white/50 flex flex-col gap-2 animate-in fade-in slide-in-from-top-4 duration-200">
+            <button 
+              onClick={() => { setActiveLayer('standard'); setIsLayerMenuOpen(false); }}
+              className={`flex items-center gap-3 p-2 rounded-xl transition-all w-32 ${activeLayer === 'standard' ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-100'}`}
+            >
+              <div className="w-8 h-8 rounded-lg bg-gray-100 border border-gray-300 relative overflow-hidden shadow-sm">
+                 <div className="absolute top-0 bottom-0 left-1/2 w-1 bg-white border-l border-gray-300"></div>
+              </div>
+              <span className="text-xs font-bold text-gray-700">Default</span>
+            </button>
+
+            <button 
+              onClick={() => { setActiveLayer('satellite'); setIsLayerMenuOpen(false); }}
+              className={`flex items-center gap-3 p-2 rounded-xl transition-all w-32 ${activeLayer === 'satellite' ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-100'}`}
+            >
+              <div className="w-8 h-8 rounded-lg border border-green-900 overflow-hidden relative shadow-sm">
+                 <div className="absolute inset-0 bg-[url('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/0/0/0')] bg-cover"></div>
+              </div>
+              <span className="text-xs font-bold text-gray-700">Satellite</span>
+            </button>
+
+            <button 
+              onClick={() => { setActiveLayer('dark'); setIsLayerMenuOpen(false); }}
+              className={`flex items-center gap-3 p-2 rounded-xl transition-all w-32 ${activeLayer === 'dark' ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-gray-100'}`}
+            >
+              <div className="w-8 h-8 rounded-lg bg-gray-800 border border-gray-600 flex items-center justify-center shadow-sm">
+                 <svg className="w-4 h-4 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+              </div>
+              <span className="text-xs font-bold text-gray-700">Night</span>
+            </button>
+          </div>
+        )}
+
         <button 
-          onClick={() => setMapStyle(prev => prev === 'streets' ? 'satellite' : 'streets')}
-          className="bg-white/95 backdrop-blur-md text-gray-800 font-bold text-xs px-4 py-3 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all hover:scale-105 border border-white/60 flex items-center gap-2 ring-1 ring-black/5"
+          onClick={() => setIsLayerMenuOpen(!isLayerMenuOpen)}
+          className="w-12 h-12 p-1 bg-white rounded-2xl shadow-xl hover:scale-105 transition-transform border border-white/50"
         >
-          {mapStyle === 'streets' ? (
-            <>
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-              <span>Satellite View</span>
-            </>
-          ) : (
-            <>
-              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-              <span>Street View</span>
-            </>
-          )}
+          {getCurrentIcon()}
         </button>
       </div>
 
       <MapContainer 
         center={position} 
-        zoom={16} 
-        style={{ height: '100%', width: '100%' }}
+        zoom={18} 
+        style={{ height: '100%', width: '100%' }} 
         zoomControl={false}
+        maxZoom={18} // Allow users to zoom in really close
       >
-        {/* KEY PROP IS CRITICAL: Forces React to destroy the old layer and build the new one */}
-        <TileLayer 
-          key={mapStyle} 
-          attribution={tiles[mapStyle].attribution}
-          url={tiles[mapStyle].url} 
-          maxZoom={tiles[mapStyle].maxZoom}
-        />
+        {/* 
+           FIX APPLIED HERE:
+           We set maxNativeZoom to 18 (Satellite) or 19 (Map).
+           We set maxZoom to 22 (Digital Zoom).
+           This forces Leaflet to stretch the images instead of showing gray empty tiles.
+        */}
+
+        {activeLayer === 'standard' && (
+          <TileLayer 
+            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" 
+            attribution="&copy; CARTO" 
+            maxNativeZoom={19} 
+            maxZoom={22} 
+          />
+        )}
         
+        {activeLayer === 'dark' && (
+          <TileLayer 
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" 
+            attribution="&copy; CARTO" 
+            maxNativeZoom={19} 
+            maxZoom={22}
+          />
+        )}
+        
+        {activeLayer === 'satellite' && (
+          <>
+            <TileLayer 
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}" 
+              attribution="&copy; Esri" 
+              maxNativeZoom={17} // Safe limit for rural areas to prevent gray screens
+              maxZoom={22}
+            />
+            {/* Hybrid Labels Overlay */}
+            <TileLayer 
+              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png" 
+              maxNativeZoom={19} 
+              maxZoom={22}
+              zIndex={10} 
+            />
+          </>
+        )}
+
         <MapController center={position} focusLocation={focusLocation} onClearFocus={onClearFocus} />
         
-        <Circle 
-          center={position} 
-          radius={accuracy} 
-          pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.15, stroke: false }}
-        />
-
-        <Marker position={position} icon={myIcon}>
-          <Tooltip direction="top" offset={[0, -30]} opacity={1} permanent className="font-bold text-blue-600 border-none shadow-md rounded-lg">
-             You
-          </Tooltip>
-        </Marker>
+        <Circle center={position} radius={accuracy} pathOptions={{ color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.1, stroke: false }} />
         
-        {friends && friends.map((friend) => (
-          <Marker key={friend.uid} position={[friend.lat, friend.lng]} icon={friendIcon}>
-             <Tooltip direction="top" offset={[0, -30]} opacity={0.9} permanent className="font-bold text-red-600 border-none shadow-md rounded-lg">
-               {friend.name.split(' ')[0]}
+        <Marker position={position} icon={myDivIcon} zIndexOffset={100} />
+        
+        {friends.map((friend) => (
+          <Marker key={friend.uid} position={[friend.lat, friend.lng]} icon={createFriendIcon(friend.name)} zIndexOffset={50}>
+             <Tooltip direction="bottom" offset={[0, 10]} opacity={1} className="font-bold border-none shadow-xl rounded-lg text-xs py-1.5 px-3 text-gray-600">
+               {friend.name}
              </Tooltip>
-             <Popup>
-                <div className="text-center p-1">
-                  <p className="font-bold text-gray-800 text-sm">{friend.name}</p>
-                  <p className="text-[10px] text-gray-500 uppercase mt-1 tracking-wider">Live GPS Location</p>
-                </div>
-             </Popup>
           </Marker>
         ))}
-
-        {roadRoute && (
-          <Polyline 
-            positions={roadRoute} 
-            color={mapStyle === 'satellite' ? '#a5b4fc' : '#6366f1'} // Lighter color on satellite
-            weight={6} 
-            opacity={0.9}
-            dashArray="10, 10" 
-            lineCap="round"
-            lineJoin="round"
-          />
-        )}
         
-        {route && route.length > 1 && (
-          <Polyline 
-            positions={route} 
-            color="#3b82f6" 
-            weight={4} 
-            opacity={0.6} 
-            lineCap="round"
-            lineJoin="round"
-          />
-        )}
+        {roadRoute && <Polyline positions={roadRoute} color={activeLayer === 'dark' ? '#818cf8' : '#6366f1'} weight={6} opacity={0.9} dashArray="12, 12" />}
       </MapContainer>
     </div>
   )
