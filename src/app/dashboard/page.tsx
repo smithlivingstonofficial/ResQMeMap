@@ -23,18 +23,17 @@ export interface FriendLocation {
 export default function DashboardPage() {
   const router = useRouter()
   const [position, setPosition] = useState<[number, number] | null>(null)
-  const [accuracy, setAccuracy] = useState<number>(0)
+  const[accuracy, setAccuracy] = useState<number>(0)
   
-  // New Error Handling States
-  const [gpsWarning, setGpsWarning] = useState<string | null>(null)
+  const[gpsWarning, setGpsWarning] = useState<string | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null) 
   
   const [route, setRoute] = useState<[number, number][]>([])
-  const[friendsLocations, setFriendsLocations] = useState<Record<string, FriendLocation>>({})
+  const [friendsLocations, setFriendsLocations] = useState<Record<string, FriendLocation>>({})
   
-  const[ghostMode, setGhostMode] = useState(false)
+  const [ghostMode, setGhostMode] = useState(false)
   const ghostModeRef = useRef(false)
-  const[focusLocation, setFocusLocation] = useState<[number, number] | null>(null)
+  const [focusLocation, setFocusLocation] = useState<[number, number] | null>(null)
 
   const fetchFriendsLocations = async (uid: string) => {
     const { data: shares } = await supabase
@@ -112,24 +111,36 @@ export default function DashboardPage() {
         return;
       }
 
+      // STEP 1: Quick fetch just to get the map on screen immediately (allows Wi-Fi/Cellular data)
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setPosition([pos.coords.latitude, pos.coords.longitude])
+          setAccuracy(pos.coords.accuracy)
+        },
+        (err) => console.log("Quick fetch skipped, waiting for high accuracy..."),
+        { enableHighAccuracy: false, maximumAge: Infinity, timeout: 5000 }
+      );
+
+      // STEP 2: Start the continuous high-accuracy tracker
       watchId = navigator.geolocation.watchPosition(
         async (pos) => {
-          // Clear any previous errors if we successfully get a location
           setLocationError(null)
           
           const { latitude, longitude, accuracy: newAccuracy } = pos.coords
           setAccuracy(newAccuracy)
 
-          if (newAccuracy > 150) {
-            setGpsWarning(`Weak GPS (${Math.round(newAccuracy)}m). Move outside.`)
-            if (position !== null) return; 
+          // Always set position so the map loads and moves
+          setPosition([latitude, longitude])
+          
+          // Only add to breadcrumb route if it's somewhat accurate
+          if (newAccuracy <= 150) {
+            setRoute((prevRoute) =>[...prevRoute,[latitude, longitude]])
+            setGpsWarning(null)
           } else {
-            setGpsWarning(null) 
+            setGpsWarning(`Weak GPS (${Math.round(newAccuracy)}m). Try moving near a window.`)
           }
 
-          setPosition([latitude, longitude])
-          setRoute((prevRoute) => [...prevRoute,[latitude, longitude]])
-
+          // Only broadcast to friends if the accuracy is good and we aren't a ghost
           if (!ghostModeRef.current && newAccuracy <= 150) {
             await supabase.from('live_locations').upsert({
               firebase_uid: user.uid,
@@ -141,20 +152,18 @@ export default function DashboardPage() {
         },
         (err) => {
            console.warn("GPS Error: ", err.code, err.message)
-           
-           // SMART ERROR HANDLING
-           if (err.code === 1) { // PERMISSION_DENIED
-             setLocationError("Location access denied. Please allow permissions in your settings.")
-           } else if (err.code === 2) { // POSITION_UNAVAILABLE
+           if (err.code === 1) { 
+             setLocationError("Location access denied. Please check your phone settings.")
+           } else if (err.code === 2) { 
              setLocationError("GPS signal unavailable. Ensure your phone's Location Service is ON.")
-           } else if (err.code === 3) { // TIMEOUT
-             setGpsWarning("Searching for satellites... (This takes longer indoors)")
+           } else if (err.code === 3) { 
+             setGpsWarning("Searching for satellites... Please wait.")
            }
         },
         { 
           enableHighAccuracy: true, 
-          maximumAge: 0, 
-          timeout: 15000 // INCREASED to 15 seconds to give phones more time to lock onto satellites
+          maximumAge: 10000, // Allow 10-second old cached locations to prevent infinite loading indoors
+          timeout: 27000     // Give the phone 27 seconds to find a satellite before throwing a timeout
         }
       )
 
@@ -236,7 +245,6 @@ export default function DashboardPage() {
             />
           ) : (
             <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-gray-50">
-              {/* SMART ERROR UI */}
               {locationError ? (
                 <div className="text-center max-w-sm">
                   <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
@@ -246,9 +254,16 @@ export default function DashboardPage() {
                   <p className="text-sm text-gray-600 mb-6">{locationError}</p>
                   
                   <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-left">
-                    <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-1">Developer Notice</p>
-                    <p className="text-xs text-blue-600">If you are testing this on a mobile device, Apple and Google block GPS unless the URL uses secure <b>HTTPS</b>. Please deploy to Vercel and use the live link.</p>
+                    <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-2">How to Fix on Mobile:</p>
+                    <ul className="text-xs text-blue-600 list-disc pl-4 space-y-1">
+                      <li><b>iPhone:</b> Settings &gt; Safari &gt; Location &gt; Set to "Allow"</li>
+                      <li><b>Android:</b> Tap the lock icon next to the URL &gt; Permissions &gt; Allow Location</li>
+                    </ul>
                   </div>
+                  
+                  <button onClick={() => window.location.reload()} className="mt-6 bg-gray-900 text-white font-bold py-3 px-6 rounded-xl w-full">
+                    Refresh Page
+                  </button>
                 </div>
               ) : (
                 <>
