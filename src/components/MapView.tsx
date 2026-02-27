@@ -24,13 +24,14 @@ const friendIcon = L.icon({
 })
 
 interface MapViewProps {
-  position: [number, number]
+  position:[number, number]
   route: [number, number][]
   friends: FriendLocation[]
   focusLocation: [number, number] | null
+  onClearFocus?: () => void
 }
 
-function MapController({ center, focusLocation }: { center: [number, number], focusLocation: [number, number] | null }) {
+function MapController({ center, focusLocation, onClearFocus }: { center: [number, number], focusLocation:[number, number] | null, onClearFocus?: () => void }) {
   const map = useMap()
   const[initialSnap, setInitialSnap] = useState(false)
 
@@ -45,22 +46,56 @@ function MapController({ center, focusLocation }: { center: [number, number], fo
   // 2. Fly to specific friend when clicked in the sidebar
   useEffect(() => {
     if (focusLocation) {
-      map.flyTo(focusLocation, 17, { animate: true, duration: 1.5 })
+      // Zoom out slightly to see the route, then center on friend
+      map.flyTo(focusLocation, 14, { animate: true, duration: 1.5 })
     }
   }, [focusLocation, map])
 
   return (
     <button 
-      onClick={() => map.flyTo(center, 16, { animate: true, duration: 1.0 })}
+      onClick={() => {
+        map.flyTo(center, 16, { animate: true, duration: 1.0 })
+        if (onClearFocus) onClearFocus() // Clears the road route
+      }}
       className="absolute bottom-6 right-6 z-[400] bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg transition-transform hover:scale-105 flex items-center justify-center border-2 border-white"
-      title="Recenter on me"
+      title="Recenter on me & Clear Route"
     >
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
     </button>
   )
 }
 
-export default function MapView({ position, route, friends, focusLocation }: MapViewProps) {
+export default function MapView({ position, route, friends, focusLocation, onClearFocus }: MapViewProps) {
+  const[roadRoute, setRoadRoute] = useState<[number, number][] | null>(null)
+
+  // Fetch actual road driving directions from OSRM API
+  useEffect(() => {
+    if (!focusLocation || !position) {
+      setRoadRoute(null)
+      return
+    }
+
+    // Debounce to prevent API spam while driving/moving
+    const timer = setTimeout(async () => {
+      try {
+        // OSRM expects: longitude,latitude
+        const url = `https://router.project-osrm.org/route/v1/driving/${position[1]},${position[0]};${focusLocation[1]},${focusLocation[0]}?overview=full&geometries=geojson`
+        const res = await fetch(url)
+        const data = await res.json()
+        
+        if (data.routes && data.routes.length > 0) {
+          // GeoJSON returns [lng, lat], but Leaflet requires [lat, lng]
+          const coords = data.routes[0].geometry.coordinates.map((c: [number, number]) => [c[1], c[0]])
+          setRoadRoute(coords)
+        }
+      } catch (error) {
+        console.error("OSRM Route Error:", error)
+      }
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [focusLocation, position])
+
   return (
     <div className="w-full h-full relative z-0">
       <MapContainer 
@@ -74,7 +109,7 @@ export default function MapView({ position, route, friends, focusLocation }: Map
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
         />
         
-        <MapController center={position} focusLocation={focusLocation} />
+        <MapController center={position} focusLocation={focusLocation} onClearFocus={onClearFocus} />
         
         {/* Your Location */}
         <Marker position={position} icon={myIcon}>
@@ -97,14 +132,27 @@ export default function MapView({ position, route, friends, focusLocation }: Map
              </Popup>
           </Marker>
         ))}
+
+        {/* ROAD NAVIGATION ROUTE (Purple dashed line) */}
+        {roadRoute && (
+          <Polyline 
+            positions={roadRoute} 
+            color="#8b5cf6" // Purple
+            weight={6} 
+            opacity={0.8}
+            dashArray="10, 10" // Makes it look like a planned route
+            lineCap="round"
+            lineJoin="round"
+          />
+        )}
         
-        {/* Route Tracing */}
+        {/* Your Breadcrumb History Trace (Faded Blue line) */}
         {route && route.length > 1 && (
           <Polyline 
             positions={route} 
             color="#3b82f6" 
             weight={4} 
-            opacity={0.6}
+            opacity={0.4}
             lineCap="round"
             lineJoin="round"
           />
