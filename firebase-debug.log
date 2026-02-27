@@ -1,0 +1,49 @@
+[debug] [2026-02-27T07:51:41.040Z] ----------------------------------------------------------------------
+[debug] [2026-02-27T07:51:41.045Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\smith\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init
+[debug] [2026-02-27T07:51:41.046Z] CLI Version:   15.1.0
+[debug] [2026-02-27T07:51:41.046Z] Platform:      win32
+[debug] [2026-02-27T07:51:41.046Z] Node Version:  v20.19.2
+[debug] [2026-02-27T07:51:41.047Z] Time:          Fri Feb 27 2026 13:21:41 GMT+0530 (India Standard Time)
+[debug] [2026-02-27T07:51:41.047Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-02-27T07:51:41.053Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  C:\Users\smith\Desktop\Patent\src\realtime-map
+
+[debug] [2026-02-27T07:51:44.131Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2026-02-27T07:51:44.132Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] 
+[debug] [2026-02-27T07:51:51.644Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-02-27T07:51:51.644Z] > authorizing via signed-in user (smithlivingston2005@gmail.com)
+[debug] [2026-02-27T07:51:51.646Z] Checked if tokens are valid: true, expires at: 1772182248232
+[debug] [2026-02-27T07:51:51.646Z] Checked if tokens are valid: true, expires at: 1772182248232
+[debug] [2026-02-27T07:51:51.648Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects pageSize=100
+[debug] [2026-02-27T07:51:52.362Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects 200
+[debug] [2026-02-27T07:51:52.363Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects [omitted]
+[info] i  Don't want to scroll through all your projects? If you know your project ID, you can initialize it directly using firebase init --project <project_id>.
+ 
+[info] 
+=== Hosting Setup
+[debug] [2026-02-27T07:52:01.723Z] Checked if tokens are valid: true, expires at: 1772182248232
+[debug] [2026-02-27T07:52:01.723Z] Checked if tokens are valid: true, expires at: 1772182248232
+[debug] [2026-02-27T07:52:01.724Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/res-q-me [none]
+[debug] [2026-02-27T07:52:02.142Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/res-q-me 200
+[debug] [2026-02-27T07:52:02.143Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/res-q-me {"projectId":"res-q-me","projectNumber":"759312884282","displayName":"ResQMe","name":"projects/res-q-me","resources":{"hostingSite":"res-q-me"},"state":"ACTIVE","etag":"1_7e2e6027-9308-4dcb-ae18-825547952c96"}
+[info] 
+[info] Your public directory is the folder (relative to your project directory) that
+[info] will contain Hosting assets to be uploaded with firebase deploy. If you
+[info] have a build process for your assets, use your build's output directory.
+[info] 

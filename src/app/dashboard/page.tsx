@@ -1,9 +1,10 @@
+// src/app/dashboard/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { signOut, onAuthStateChanged } from 'firebase/auth' // Imported onAuthStateChanged
+import { signOut, onAuthStateChanged } from 'firebase/auth' 
 import ProtectedRoute from '@/components/ProtectedRoute'
 import { supabase } from '@/lib/supabase'
 import { auth } from '@/lib/firebase'
@@ -32,7 +33,11 @@ export default function DashboardPage() {
       .eq('viewer_uid', uid)
       .eq('status', 'approved')
 
-    if (!shares || shares.length === 0) return
+    // If no approved friends, clear the map pins and stop executing
+    if (!shares || shares.length === 0) {
+      setFriendsLocations({})
+      return
+    }
 
     const ownerUids = shares.map(s => s.owner_uid)
     const { data: friendsData } = await supabase
@@ -42,16 +47,24 @@ export default function DashboardPage() {
 
     if (friendsData) {
       const formatted: Record<string, FriendLocation> = {}
+      
       friendsData.forEach((friend: any) => {
-        if (friend.live_locations && friend.live_locations.length > 0) {
+        // FIX APPLIED HERE: Safely handle if Supabase returns an Object OR an Array.
+        // Previously, `.length > 0` failed because it was returning a single Object.
+        const loc = Array.isArray(friend.live_locations) 
+          ? friend.live_locations[0] 
+          : friend.live_locations
+
+        if (loc && loc.latitude !== undefined && loc.longitude !== undefined) {
           formatted[friend.firebase_uid] = {
             uid: friend.firebase_uid,
             name: friend.name,
-            lat: friend.live_locations[0].latitude,
-            lng: friend.live_locations[0].longitude
+            lat: loc.latitude,
+            lng: loc.longitude
           }
         }
       })
+      
       setFriendsLocations(formatted)
     }
   }
@@ -63,7 +76,7 @@ export default function DashboardPage() {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) return;
 
-      // FIX: Ensure the user exists in the DB *before* we try to write their location
+      // Ensure the user exists in the DB before we try to write their location
       // This stops the 'live_locations' Foreign Key 409 Error
       await supabase.from('users').upsert({
         firebase_uid: user.uid,
@@ -91,14 +104,16 @@ export default function DashboardPage() {
         { enableHighAccuracy: true }
       )
 
-      // Start Realtime Subscription
+      // Start Realtime Subscription for Friend movements
       sub = supabase.channel('public:live_locations')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'live_locations' }, (payload: any) => {
           const newData = payload.new
           setFriendsLocations(prev => {
+            // Only update the map pin if this is a friend we are currently allowed to track
             if (prev[newData.firebase_uid]) {
               return {
-                ...prev,[newData.firebase_uid]: {
+                ...prev,
+                [newData.firebase_uid]: {
                   ...prev[newData.firebase_uid],
                   lat: newData.latitude,
                   lng: newData.longitude
@@ -126,7 +141,6 @@ export default function DashboardPage() {
             <h1 className="text-xl font-bold text-gray-800">Live Dashboard</h1>
           </div>
           
-          {/* UPDATED HEADER ACTIONS */}
           <div className="flex items-center gap-4">
             <Link 
               href="/profile"
