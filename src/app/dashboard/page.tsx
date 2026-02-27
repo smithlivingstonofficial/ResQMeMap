@@ -22,16 +22,19 @@ export interface FriendLocation {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const[position, setPosition] = useState<[number, number] | null>(null)
+  const [position, setPosition] = useState<[number, number] | null>(null)
   const [accuracy, setAccuracy] = useState<number>(0)
+  
+  // New Error Handling States
   const [gpsWarning, setGpsWarning] = useState<string | null>(null)
+  const [locationError, setLocationError] = useState<string | null>(null) 
+  
   const [route, setRoute] = useState<[number, number][]>([])
-  const [friendsLocations, setFriendsLocations] = useState<Record<string, FriendLocation>>({})
+  const[friendsLocations, setFriendsLocations] = useState<Record<string, FriendLocation>>({})
   
-  const [ghostMode, setGhostMode] = useState(false)
+  const[ghostMode, setGhostMode] = useState(false)
   const ghostModeRef = useRef(false)
-  
-  const [focusLocation, setFocusLocation] = useState<[number, number] | null>(null)
+  const[focusLocation, setFocusLocation] = useState<[number, number] | null>(null)
 
   const fetchFriendsLocations = async (uid: string) => {
     const { data: shares } = await supabase
@@ -104,12 +107,20 @@ export default function DashboardPage() {
 
       fetchFriendsLocations(user.uid);
 
+      if (!navigator.geolocation) {
+        setLocationError("Your browser does not support Geolocation.")
+        return;
+      }
+
       watchId = navigator.geolocation.watchPosition(
         async (pos) => {
+          // Clear any previous errors if we successfully get a location
+          setLocationError(null)
+          
           const { latitude, longitude, accuracy: newAccuracy } = pos.coords
           setAccuracy(newAccuracy)
 
-          if (newAccuracy > 100) {
+          if (newAccuracy > 150) {
             setGpsWarning(`Weak GPS (${Math.round(newAccuracy)}m). Move outside.`)
             if (position !== null) return; 
           } else {
@@ -119,7 +130,7 @@ export default function DashboardPage() {
           setPosition([latitude, longitude])
           setRoute((prevRoute) => [...prevRoute,[latitude, longitude]])
 
-          if (!ghostModeRef.current && newAccuracy <= 100) {
+          if (!ghostModeRef.current && newAccuracy <= 150) {
             await supabase.from('live_locations').upsert({
               firebase_uid: user.uid,
               latitude,
@@ -129,10 +140,22 @@ export default function DashboardPage() {
           }
         },
         (err) => {
-           console.warn("GPS Warning: ", err.message)
-           setGpsWarning("GPS Access Denied or Unavailable.")
+           console.warn("GPS Error: ", err.code, err.message)
+           
+           // SMART ERROR HANDLING
+           if (err.code === 1) { // PERMISSION_DENIED
+             setLocationError("Location access denied. Please allow permissions in your settings.")
+           } else if (err.code === 2) { // POSITION_UNAVAILABLE
+             setLocationError("GPS signal unavailable. Ensure your phone's Location Service is ON.")
+           } else if (err.code === 3) { // TIMEOUT
+             setGpsWarning("Searching for satellites... (This takes longer indoors)")
+           }
         },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+        { 
+          enableHighAccuracy: true, 
+          maximumAge: 0, 
+          timeout: 15000 // INCREASED to 15 seconds to give phones more time to lock onto satellites
+        }
       )
 
       sub = supabase.channel('public:live_locations')
@@ -171,13 +194,9 @@ export default function DashboardPage() {
 
   return (
     <ProtectedRoute>
-      {/* FULLSCREEN WRAPPER */}
       <div className="relative h-[100dvh] w-full overflow-hidden bg-gray-100 font-sans">
         
-        {/* FLOATING HEADER */}
         <header className="absolute top-0 left-0 right-0 z-[500] pointer-events-none p-4 flex flex-col gap-2 md:flex-row md:justify-between md:items-start">
-          
-          {/* Logo & Status Plate */}
           <div className="pointer-events-auto bg-white/90 backdrop-blur-md shadow-lg border border-white/40 rounded-2xl px-5 py-3 flex items-center gap-4 w-max">
             <div className={`w-3 h-3 rounded-full animate-pulse shadow-md ${ghostMode ? 'bg-gray-400 shadow-gray-300' : 'bg-green-500 shadow-green-400'}`}></div>
             <div>
@@ -190,7 +209,6 @@ export default function DashboardPage() {
             </div>
           </div>
           
-          {/* Action Buttons */}
           <div className="pointer-events-auto flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
             <button 
               onClick={toggleGhostMode}
@@ -203,13 +221,9 @@ export default function DashboardPage() {
             <Link href="/profile" className="whitespace-nowrap text-xs md:text-sm bg-white/90 backdrop-blur-md text-blue-600 font-bold py-2.5 px-4 rounded-xl shadow-md border border-white/40">
               Profile
             </Link>
-            <button onClick={() => { signOut(auth); router.replace('/login') }} className="whitespace-nowrap text-xs md:text-sm bg-red-500 text-white font-bold py-2.5 px-4 rounded-xl shadow-md hidden sm:block">
-              Logout
-            </button>
           </div>
         </header>
 
-        {/* FULLSCREEN MAP */}
         <main className="absolute inset-0 z-0">
           {position ? (
             <MapView 
@@ -221,15 +235,34 @@ export default function DashboardPage() {
               onClearFocus={() => setFocusLocation(null)} 
             />
           ) : (
-            <div className="h-full w-full flex flex-col items-center justify-center gap-4 bg-gray-50">
-              <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin shadow-lg"></div>
-              <p className="text-gray-700 font-bold text-lg">Locating Satellites...</p>
-              <p className="text-sm text-gray-500 max-w-[250px] text-center">Please ensure your device Location Services are turned on.</p>
+            <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-gray-50">
+              {/* SMART ERROR UI */}
+              {locationError ? (
+                <div className="text-center max-w-sm">
+                  <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm">
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                  </div>
+                  <p className="text-gray-800 font-bold text-xl mb-2">Location Blocked</p>
+                  <p className="text-sm text-gray-600 mb-6">{locationError}</p>
+                  
+                  <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl text-left">
+                    <p className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-1">Developer Notice</p>
+                    <p className="text-xs text-blue-600">If you are testing this on a mobile device, Apple and Google block GPS unless the URL uses secure <b>HTTPS</b>. Please deploy to Vercel and use the live link.</p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin shadow-lg mb-4"></div>
+                  <p className="text-gray-700 font-bold text-lg">Locating Satellites...</p>
+                  <p className="text-sm text-gray-500 max-w-[250px] text-center mt-2">
+                    {gpsWarning || 'Please allow location permissions when your browser prompts you.'}
+                  </p>
+                </>
+              )}
             </div>
           )}
         </main>
         
-        {/* RESPONSIVE FLOATING PANEL (Bottom Sheet on Mobile, Right Panel on PC) */}
         <SharePanel 
           myPosition={position}
           friends={Object.values(friendsLocations)}
