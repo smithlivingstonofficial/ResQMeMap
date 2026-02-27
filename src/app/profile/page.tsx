@@ -9,11 +9,11 @@ import { supabase } from '@/lib/supabase'
 
 export default function ProfilePage() {
   const router = useRouter()
-  const[loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
   
   const [pendingReceived, setPendingReceived] = useState<any[]>([])
-  const [pendingSent, setPendingSent] = useState<any[]>([])
-  const[mutualConnections, setMutualConnections] = useState<any[]>([])     
+  const[pendingSent, setPendingSent] = useState<any[]>([])
+  const [mutualConnections, setMutualConnections] = useState<any[]>([])     
 
   const fetchRelationships = async () => {
     const user = auth.currentUser
@@ -21,7 +21,6 @@ export default function ProfilePage() {
 
     setLoading(true)
 
-    // Fetch ALL connections involving this user (both sent and received)
     const { data: allShares } = await supabase
       .from('location_shares')
       .select(`
@@ -32,18 +31,14 @@ export default function ProfilePage() {
       .or(`owner_uid.eq.${user.uid},viewer_uid.eq.${user.uid}`)
 
     if (allShares) {
-      // 1. Pending requests sent TO me (I am the owner)
       setPendingReceived(allShares.filter(s => s.status === 'pending' && s.owner_uid === user.uid))
-      
-      // 2. Pending requests I SENT (I am the viewer)
       setPendingSent(allShares.filter(s => s.status === 'pending' && s.viewer_uid === user.uid))
       
-      // 3. Approved Mutual Connections
       const approved = allShares.filter(s => s.status === 'approved').map(s => {
         const isOwner = s.owner_uid === user.uid
         return {
           id: s.id,
-          friend: isOwner ? s.viewer : s.owner // Extract the OTHER person's details
+          friend: isOwner ? s.viewer : s.owner 
         }
       })
       setMutualConnections(approved)
@@ -76,114 +71,144 @@ export default function ProfilePage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-gray-50 p-6 md:p-12 font-sans">
-        <div className="max-w-4xl mx-auto">
-          
-          <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-bold text-gray-800">Account & Privacy</h1>
-            <Link 
-              href="/dashboard"
-              className="text-sm bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors"
-            >
-              &larr; Back to Map
-            </Link>
-          </div>
+      <div className="min-h-[100dvh] bg-gray-50 font-sans pb-12">
+        
+        {/* STICKY MOBILE-APP HEADER */}
+        <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 sm:px-6 py-4 flex items-center justify-between shadow-sm">
+          <Link 
+            href="/dashboard"
+            className="flex items-center gap-2 text-blue-600 font-bold hover:text-blue-800 transition-colors bg-blue-50 px-3 py-1.5 rounded-xl"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"></path></svg>
+            Map
+          </Link>
+          <h1 className="text-lg font-bold text-gray-800">Account & Privacy</h1>
+          <div className="w-20"></div> {/* Invisible spacer to perfectly center the title */}
+        </header>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8 flex items-center gap-6">
-            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-3xl font-bold uppercase shadow-inner">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 mt-6 sm:mt-10">
+          
+          {/* PREMIUM PROFILE CARD */}
+          <div className="bg-white rounded-3xl p-6 shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 mb-10 flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 text-white flex items-center justify-center text-3xl font-bold uppercase shadow-inner shrink-0">
               {auth.currentUser?.email?.charAt(0) || '?'}
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800">{auth.currentUser?.displayName || 'Anonymous User'}</h2>
-              <p className="text-gray-500">{auth.currentUser?.email}</p>
-              <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 text-xs font-semibold rounded-full border border-green-200">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-gray-800 tracking-tight">{auth.currentUser?.displayName || 'Anonymous User'}</h2>
+              <p className="text-gray-500 text-sm mt-1">{auth.currentUser?.email}</p>
+              <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 text-green-700 text-xs font-bold rounded-full border border-green-200 shadow-sm">
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
                 Location Services Active
               </div>
             </div>
           </div>
 
           {loading ? (
-            <div className="text-center py-10 text-gray-500 font-medium animate-pulse">Loading connections...</div>
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+               <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin shadow-md"></div>
+               <p className="text-gray-500 font-bold animate-pulse">Syncing connections...</p>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-10">
               
-              <div className="space-y-8">
-                {/* Pending Inbound */}
-                <section>
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-yellow-400"></span>
-                    Requests to Connect ({pendingReceived.length})
+              {/* MUTUAL CONNECTIONS SECTION */}
+              <section>
+                <div className="flex items-center justify-between mb-3 pl-2">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    Active Mutual Connections
                   </h3>
-                  <div className="space-y-3">
-                    {pendingReceived.length === 0 && <p className="text-sm text-gray-500 italic">No incoming requests.</p>}
-                    {pendingReceived.map(req => (
-                      <div key={req.id} className="bg-white p-4 rounded-xl shadow-sm border border-yellow-200 flex justify-between items-center">
-                        <div>
-                          <p className="font-semibold text-gray-800">{req.viewer.name}</p>
-                          <p className="text-xs text-gray-500">{req.viewer.email}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => handleApprove(req.id)} className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded font-medium">Approve</button>
-                          <button onClick={() => handleDelete(req.id, false)} className="bg-red-50 hover:bg-red-100 text-red-600 text-xs px-3 py-1.5 rounded font-medium">Reject</button>
-                        </div>
-                      </div>
-                    ))}
+                  <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md">{mutualConnections.length}</span>
+                </div>
+                
+                {mutualConnections.length === 0 ? (
+                  <div className="bg-white border border-gray-100 rounded-2xl p-6 text-center shadow-sm">
+                    <p className="text-sm text-gray-500 italic">You aren't connected with anyone yet.</p>
                   </div>
-                </section>
-
-                {/* Pending Outbound */}
-                <section>
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-gray-300"></span>
-                    Requests You Sent ({pendingSent.length})
-                  </h3>
+                ) : (
                   <div className="space-y-3">
-                    {pendingSent.length === 0 && <p className="text-sm text-gray-500 italic">No pending sent requests.</p>}
-                    {pendingSent.map(req => (
-                      <div key={req.id} className="bg-gray-50 p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-                        <div>
-                          <p className="font-semibold text-gray-800">{req.owner.name}</p>
-                          <p className="text-xs text-gray-500">{req.owner.email}</p>
-                          <span className="text-[10px] uppercase font-bold text-yellow-600 mt-1 block">Awaiting Their Approval</span>
-                        </div>
-                        <button onClick={() => handleDelete(req.id, false)} className="text-xs bg-gray-200 hover:bg-red-100 hover:text-red-600 text-gray-600 px-3 py-1.5 rounded font-medium transition-colors">
-                          Cancel
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              </div>
-
-              {/* MUTUAL CONNECTIONS */}
-              <div className="space-y-8">
-                <section>
-                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-blue-500"></span>
-                    Active Mutual Connections ({mutualConnections.length})
-                  </h3>
-                  <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4">
-                    <p className="text-xs text-blue-800">
-                      Tracking is mutual. If you remove a user from this list, they will no longer see your location, and you will no longer see theirs.
-                    </p>
-                  </div>
-                  <div className="space-y-3">
-                    {mutualConnections.length === 0 && <p className="text-sm text-gray-500 italic">You aren't connected with anyone.</p>}
                     {mutualConnections.map(conn => (
-                      <div key={conn.id} className="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex justify-between items-center">
-                        <div>
-                          <p className="font-semibold text-gray-800">{conn.friend.name}</p>
-                          <p className="text-xs text-gray-500">{conn.friend.email}</p>
+                      <div key={conn.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-all hover:shadow-md">
+                        <div className="flex items-center gap-3 w-full sm:w-auto overflow-hidden">
+                           <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-lg shrink-0">
+                             {conn.friend.name.charAt(0).toUpperCase()}
+                           </div>
+                           <div className="min-w-0">
+                             <p className="font-bold text-gray-800 truncate">{conn.friend.name}</p>
+                             <p className="text-xs text-gray-500 truncate">{conn.friend.email}</p>
+                           </div>
                         </div>
-                        <button onClick={() => handleDelete(conn.id, true)} className="text-xs bg-red-50 hover:bg-red-600 hover:text-white text-red-600 px-3 py-1.5 rounded font-medium transition-colors border border-red-100">
+                        <button onClick={() => handleDelete(conn.id, true)} className="w-full sm:w-auto text-xs bg-red-50 hover:bg-red-500 hover:text-white text-red-600 px-4 py-2.5 rounded-xl font-bold transition-colors">
                           Disconnect
                         </button>
                       </div>
                     ))}
                   </div>
-                </section>
-              </div>
+                )}
+              </section>
+
+              {/* PENDING INBOUND SECTION */}
+              <section>
+                <div className="flex items-center justify-between mb-3 pl-2">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-yellow-400"></span>
+                    Action Required (Received)
+                  </h3>
+                  <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md">{pendingReceived.length}</span>
+                </div>
+                
+                {pendingReceived.length === 0 ? (
+                  <div className="bg-white border border-gray-100 rounded-2xl p-6 text-center shadow-sm">
+                    <p className="text-sm text-gray-500 italic">No incoming requests.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {pendingReceived.map(req => (
+                      <div key={req.id} className="bg-yellow-50/50 p-4 rounded-2xl shadow-sm border border-yellow-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-800 truncate">{req.viewer.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{req.viewer.email}</p>
+                        </div>
+                        <div className="flex gap-2 w-full sm:w-auto">
+                          <button onClick={() => handleApprove(req.id)} className="flex-1 sm:flex-none bg-gray-900 hover:bg-black text-white text-xs px-5 py-2.5 rounded-xl font-bold shadow-md transition-colors">Approve</button>
+                          <button onClick={() => handleDelete(req.id, false)} className="flex-1 sm:flex-none bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 text-xs px-5 py-2.5 rounded-xl font-bold transition-colors">Reject</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* PENDING OUTBOUND SECTION */}
+              <section>
+                <div className="flex items-center justify-between mb-3 pl-2">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-gray-300"></span>
+                    Awaiting Approval (Sent)
+                  </h3>
+                  <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md">{pendingSent.length}</span>
+                </div>
+                
+                {pendingSent.length === 0 ? (
+                  <div className="bg-white border border-gray-100 rounded-2xl p-6 text-center shadow-sm">
+                    <p className="text-sm text-gray-500 italic">No pending sent requests.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {pendingSent.map(req => (
+                      <div key={req.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 opacity-75">
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-800 truncate">{req.owner.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{req.owner.email}</p>
+                        </div>
+                        <button onClick={() => handleDelete(req.id, false)} className="w-full sm:w-auto text-xs bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-600 px-4 py-2.5 rounded-xl font-bold transition-colors">
+                          Cancel Request
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
 
             </div>
           )}

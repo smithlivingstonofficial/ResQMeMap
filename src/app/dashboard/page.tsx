@@ -203,9 +203,9 @@ export default function DashboardPage() {
 
   return (
     <ProtectedRoute>
-      <div className="relative h-[100dvh] w-full overflow-hidden bg-gray-100 font-sans">
+      <div className="relative h-dvh w-full overflow-hidden bg-gray-100 font-sans">
         
-        <header className="absolute top-0 left-0 right-0 z-[500] pointer-events-none p-4 flex flex-col gap-2 md:flex-row md:justify-between md:items-start">
+        <header className="absolute top-0 left-0 right-0 z-500 pointer-events-none p-4 flex flex-col gap-2 md:flex-row md:justify-between md:items-start">
           <div className="pointer-events-auto bg-white/90 backdrop-blur-md shadow-lg border border-white/40 rounded-2xl px-5 py-3 flex items-center gap-4 w-max">
             <div className={`w-3 h-3 rounded-full animate-pulse shadow-md ${ghostMode ? 'bg-gray-400 shadow-gray-300' : 'bg-green-500 shadow-green-400'}`}></div>
             <div>

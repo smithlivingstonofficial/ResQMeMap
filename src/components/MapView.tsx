@@ -45,7 +45,6 @@ function MapController({ center, focusLocation, onClearFocus }: { center: [numbe
 
   useEffect(() => {
     if (focusLocation) {
-      // Offset slightly to account for mobile bottom sheet
       map.flyTo(focusLocation, 15, { animate: true, duration: 1.5 })
     }
   }, [focusLocation, map])
@@ -56,8 +55,7 @@ function MapController({ center, focusLocation, onClearFocus }: { center: [numbe
         map.flyTo(center, 16, { animate: true, duration: 1.0 })
         if (onClearFocus) onClearFocus()
       }}
-      // Moved button higher on mobile (bottom-24) to sit gracefully above the collapsed bottom sheet
-      className="absolute bottom-24 md:bottom-8 right-4 md:right-auto md:left-6 z-[400] bg-white text-blue-600 p-3.5 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.15)] transition-transform hover:scale-105 flex items-center justify-center border border-gray-100"
+      className="absolute bottom-24 md:bottom-8 right-4 md:right-auto md:left-6 z-[1000] bg-white text-blue-600 p-3.5 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.15)] transition-transform hover:scale-105 flex items-center justify-center border border-gray-100"
       title="Recenter on me & Clear Route"
     >
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -67,6 +65,7 @@ function MapController({ center, focusLocation, onClearFocus }: { center: [numbe
 
 export default function MapView({ position, accuracy, route, friends, focusLocation, onClearFocus }: MapViewProps) {
   const [roadRoute, setRoadRoute] = useState<[number, number][] | null>(null)
+  const [mapStyle, setMapStyle] = useState<'streets' | 'satellite'>('streets')
 
   useEffect(() => {
     if (!focusLocation || !position) {
@@ -98,17 +97,59 @@ export default function MapView({ position, accuracy, route, friends, focusLocat
     return () => clearTimeout(timer)
   }, [focusLocation, position])
 
+  // UPDATED TILE CONFIGURATION
+  const tiles = {
+    streets: {
+      url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19
+    },
+    satellite: {
+      // Using Esri World Imagery (High Res Satellite)
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+      maxZoom: 18 // IMPORTANT: Satellite tiles often go blank if you zoom past 18
+    }
+  }
+
   return (
     <div className="w-full h-full relative z-0">
+      
+      {/* 
+         FIX: Increased z-index to 1000 so it sits above markers/polylines.
+         Adjusted 'top' to 28 (112px) to ensure it clears the floating header.
+      */}
+      <div className="absolute top-28 right-4 z-[1000]">
+        <button 
+          onClick={() => setMapStyle(prev => prev === 'streets' ? 'satellite' : 'streets')}
+          className="bg-white/95 backdrop-blur-md text-gray-800 font-bold text-xs px-4 py-3 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-all hover:scale-105 border border-white/60 flex items-center gap-2 ring-1 ring-black/5"
+        >
+          {mapStyle === 'streets' ? (
+            <>
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span>Satellite View</span>
+            </>
+          ) : (
+            <>
+              <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+              <span>Street View</span>
+            </>
+          )}
+        </button>
+      </div>
+
       <MapContainer 
         center={position} 
         zoom={16} 
         style={{ height: '100%', width: '100%' }}
-        zoomControl={false} // Hidden default controls for clean mobile aesthetic
+        zoomControl={false}
       >
+        {/* KEY PROP IS CRITICAL: Forces React to destroy the old layer and build the new one */}
         <TileLayer 
-          attribution='&copy; OpenStreetMap'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+          key={mapStyle} 
+          attribution={tiles[mapStyle].attribution}
+          url={tiles[mapStyle].url} 
+          maxZoom={tiles[mapStyle].maxZoom}
         />
         
         <MapController center={position} focusLocation={focusLocation} onClearFocus={onClearFocus} />
@@ -142,9 +183,9 @@ export default function MapView({ position, accuracy, route, friends, focusLocat
         {roadRoute && (
           <Polyline 
             positions={roadRoute} 
-            color="#6366f1" // Indigo
+            color={mapStyle === 'satellite' ? '#a5b4fc' : '#6366f1'} // Lighter color on satellite
             weight={6} 
-            opacity={0.8}
+            opacity={0.9}
             dashArray="10, 10" 
             lineCap="round"
             lineJoin="round"
@@ -156,7 +197,7 @@ export default function MapView({ position, accuracy, route, friends, focusLocat
             positions={route} 
             color="#3b82f6" 
             weight={4} 
-            opacity={0.4}
+            opacity={0.6} 
             lineCap="round"
             lineJoin="round"
           />
