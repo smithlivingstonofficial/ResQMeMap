@@ -1,4 +1,3 @@
-// src/app/profile/page.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -10,12 +9,11 @@ import { supabase } from '@/lib/supabase'
 
 export default function ProfilePage() {
   const router = useRouter()
-  const [loading, setLoading] = useState(true)
+  const[loading, setLoading] = useState(true)
   
-  // State for Lists
-  const [pendingRequests, setPendingRequests] = useState<any[]>([])
-  const [approvedViewers, setApprovedViewers] = useState<any[]>([]) // People who can see ME
-  const [trackingUsers, setTrackingUsers] = useState<any[]>([])     // People I can see
+  const [pendingReceived, setPendingReceived] = useState<any[]>([])
+  const [pendingSent, setPendingSent] = useState<any[]>([])
+  const[mutualConnections, setMutualConnections] = useState<any[]>([])     
 
   const fetchRelationships = async () => {
     const user = auth.currentUser
@@ -23,48 +21,57 @@ export default function ProfilePage() {
 
     setLoading(true)
 
-    // 1. Get people who requested ME or who are tracking ME
-    const { data: myViewers } = await supabase
+    // Fetch ALL connections involving this user (both sent and received)
+    const { data: allShares } = await supabase
       .from('location_shares')
-      .select('id, status, viewer_uid, users!location_shares_viewer_uid_fkey(name, email)')
-      .eq('owner_uid', user.uid)
+      .select(`
+        id, status, owner_uid, viewer_uid, 
+        owner:users!location_shares_owner_uid_fkey(name, email), 
+        viewer:users!location_shares_viewer_uid_fkey(name, email)
+      `)
+      .or(`owner_uid.eq.${user.uid},viewer_uid.eq.${user.uid}`)
 
-    if (myViewers) {
-      setPendingRequests(myViewers.filter(v => v.status === 'pending'))
-      setApprovedViewers(myViewers.filter(v => v.status === 'approved'))
-    }
-
-    // 2. Get people I requested to track or am currently tracking
-    const { data: myTracking } = await supabase
-      .from('location_shares')
-      .select('id, status, owner_uid, users!location_shares_owner_uid_fkey(name, email)')
-      .eq('viewer_uid', user.uid)
-
-    if (myTracking) {
-      setTrackingUsers(myTracking)
+    if (allShares) {
+      // 1. Pending requests sent TO me (I am the owner)
+      setPendingReceived(allShares.filter(s => s.status === 'pending' && s.owner_uid === user.uid))
+      
+      // 2. Pending requests I SENT (I am the viewer)
+      setPendingSent(allShares.filter(s => s.status === 'pending' && s.viewer_uid === user.uid))
+      
+      // 3. Approved Mutual Connections
+      const approved = allShares.filter(s => s.status === 'approved').map(s => {
+        const isOwner = s.owner_uid === user.uid
+        return {
+          id: s.id,
+          friend: isOwner ? s.viewer : s.owner // Extract the OTHER person's details
+        }
+      })
+      setMutualConnections(approved)
     }
 
     setLoading(false)
   }
 
   useEffect(() => {
-    // Only fetch when Firebase auth finishes initializing
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) fetchRelationships()
     })
     return () => unsubscribe()
   },[])
 
-  // Actions
   const handleApprove = async (id: string) => {
     await supabase.from('location_shares').update({ status: 'approved' }).eq('id', id)
-    fetchRelationships() // Refresh lists
+    fetchRelationships()
   }
 
-  const handleRemove = async (id: string) => {
-    if (!confirm("Are you sure you want to remove this connection?")) return
+  const handleDelete = async (id: string, isMutual: boolean) => {
+    const msg = isMutual 
+      ? "Remove this connection? Neither of you will be able to see each other's location." 
+      : "Delete this request?"
+    
+    if (!confirm(msg)) return
     await supabase.from('location_shares').delete().eq('id', id)
-    fetchRelationships() // Refresh lists
+    fetchRelationships()
   }
 
   return (
@@ -72,9 +79,8 @@ export default function ProfilePage() {
       <div className="min-h-screen bg-gray-50 p-6 md:p-12 font-sans">
         <div className="max-w-4xl mx-auto">
           
-          {/* Header */}
           <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-bold text-gray-800">Account & Permissions</h1>
+            <h1 className="text-3xl font-bold text-gray-800">Account & Privacy</h1>
             <Link 
               href="/dashboard"
               className="text-sm bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg shadow-md transition-colors"
@@ -83,7 +89,6 @@ export default function ProfilePage() {
             </Link>
           </div>
 
-          {/* Profile Details Card */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8 flex items-center gap-6">
             <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-3xl font-bold uppercase shadow-inner">
               {auth.currentUser?.email?.charAt(0) || '?'}
@@ -103,85 +108,83 @@ export default function ProfilePage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               
-              {/* LEFT COLUMN: People seeing me */}
               <div className="space-y-8">
-                
-                {/* Pending Requests Received */}
+                {/* Pending Inbound */}
                 <section>
                   <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full bg-yellow-400"></span>
-                    Pending Requests ({pendingRequests.length})
+                    Requests to Connect ({pendingReceived.length})
                   </h3>
                   <div className="space-y-3">
-                    {pendingRequests.length === 0 && <p className="text-sm text-gray-500 italic">No pending requests.</p>}
-                    {pendingRequests.map(req => (
+                    {pendingReceived.length === 0 && <p className="text-sm text-gray-500 italic">No incoming requests.</p>}
+                    {pendingReceived.map(req => (
                       <div key={req.id} className="bg-white p-4 rounded-xl shadow-sm border border-yellow-200 flex justify-between items-center">
                         <div>
-                          <p className="font-semibold text-gray-800">{req.users.name}</p>
-                          <p className="text-xs text-gray-500">{req.users.email}</p>
+                          <p className="font-semibold text-gray-800">{req.viewer.name}</p>
+                          <p className="text-xs text-gray-500">{req.viewer.email}</p>
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => handleApprove(req.id)} className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded font-medium">Approve</button>
-                          <button onClick={() => handleRemove(req.id)} className="bg-red-50 hover:bg-red-100 text-red-600 text-xs px-3 py-1.5 rounded font-medium">Reject</button>
+                          <button onClick={() => handleDelete(req.id, false)} className="bg-red-50 hover:bg-red-100 text-red-600 text-xs px-3 py-1.5 rounded font-medium">Reject</button>
                         </div>
                       </div>
                     ))}
                   </div>
                 </section>
 
-                {/* Approved Viewers */}
+                {/* Pending Outbound */}
                 <section>
                   <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-red-500"></span>
-                    Who Can See My Location ({approvedViewers.length})
+                    <span className="w-3 h-3 rounded-full bg-gray-300"></span>
+                    Requests You Sent ({pendingSent.length})
                   </h3>
                   <div className="space-y-3">
-                    {approvedViewers.length === 0 && <p className="text-sm text-gray-500 italic">Nobody is tracking you.</p>}
-                    {approvedViewers.map(viewer => (
-                      <div key={viewer.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                    {pendingSent.length === 0 && <p className="text-sm text-gray-500 italic">No pending sent requests.</p>}
+                    {pendingSent.map(req => (
+                      <div key={req.id} className="bg-gray-50 p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
                         <div>
-                          <p className="font-semibold text-gray-800">{viewer.users.name}</p>
-                          <p className="text-xs text-gray-500">{viewer.users.email}</p>
+                          <p className="font-semibold text-gray-800">{req.owner.name}</p>
+                          <p className="text-xs text-gray-500">{req.owner.email}</p>
+                          <span className="text-[10px] uppercase font-bold text-yellow-600 mt-1 block">Awaiting Their Approval</span>
                         </div>
-                        <button onClick={() => handleRemove(viewer.id)} className="text-xs bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-600 px-3 py-1.5 rounded font-medium transition-colors">
-                          Revoke Access
+                        <button onClick={() => handleDelete(req.id, false)} className="text-xs bg-gray-200 hover:bg-red-100 hover:text-red-600 text-gray-600 px-3 py-1.5 rounded font-medium transition-colors">
+                          Cancel
                         </button>
                       </div>
                     ))}
                   </div>
                 </section>
-
               </div>
 
-              {/* RIGHT COLUMN: People I'm seeing */}
+              {/* MUTUAL CONNECTIONS */}
               <div className="space-y-8">
-                
-                {/* People I am Tracking */}
                 <section>
                   <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full bg-blue-500"></span>
-                    Friends I Am Tracking ({trackingUsers.length})
+                    Active Mutual Connections ({mutualConnections.length})
                   </h3>
+                  <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 mb-4">
+                    <p className="text-xs text-blue-800">
+                      Tracking is mutual. If you remove a user from this list, they will no longer see your location, and you will no longer see theirs.
+                    </p>
+                  </div>
                   <div className="space-y-3">
-                    {trackingUsers.length === 0 && <p className="text-sm text-gray-500 italic">You aren't tracking anyone.</p>}
-                    {trackingUsers.map(tracking => (
-                      <div key={tracking.id} className={`bg-white p-4 rounded-xl shadow-sm border ${tracking.status === 'pending' ? 'border-gray-200 opacity-75' : 'border-blue-100'} flex justify-between items-center`}>
+                    {mutualConnections.length === 0 && <p className="text-sm text-gray-500 italic">You aren't connected with anyone.</p>}
+                    {mutualConnections.map(conn => (
+                      <div key={conn.id} className="bg-white p-4 rounded-xl shadow-sm border border-blue-100 flex justify-between items-center">
                         <div>
-                          <p className="font-semibold text-gray-800">{tracking.users.name}</p>
-                          <p className="text-xs text-gray-500">{tracking.users.email}</p>
-                          {tracking.status === 'pending' && (
-                            <span className="text-[10px] uppercase font-bold text-yellow-600 mt-1 block">Approval Pending</span>
-                          )}
+                          <p className="font-semibold text-gray-800">{conn.friend.name}</p>
+                          <p className="text-xs text-gray-500">{conn.friend.email}</p>
                         </div>
-                        <button onClick={() => handleRemove(tracking.id)} className="text-xs bg-gray-100 hover:bg-red-50 hover:text-red-600 text-gray-600 px-3 py-1.5 rounded font-medium transition-colors">
-                          Delete
+                        <button onClick={() => handleDelete(conn.id, true)} className="text-xs bg-red-50 hover:bg-red-600 hover:text-white text-red-600 px-3 py-1.5 rounded font-medium transition-colors border border-red-100">
+                          Disconnect
                         </button>
                       </div>
                     ))}
                   </div>
                 </section>
-
               </div>
+
             </div>
           )}
         </div>

@@ -12,18 +12,12 @@ interface SharePanelProps {
   onFocusFriend: (lat: number, lng: number) => void
 }
 
-// Distance Calculator using Haversine formula
 const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 6371; // Radius of the earth in km
+  const R = 6371; 
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);
-  const a = 
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
-    Math.sin(dLon / 2) * Math.sin(dLon / 2); 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); 
-  const d = R * c; 
-  return d;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLon / 2) * Math.sin(dLon / 2); 
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))); 
 }
 
 const formatDistance = (km: number) => {
@@ -44,10 +38,9 @@ export default function SharePanel({ onFriendApproved, friends, myPosition, onFo
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [requests, setRequests] = useState<any[]>([])
-  const[message, setMessage] = useState('')
-  const [now, setNow] = useState(Date.now()) // For forcing relative time updates
+  const [message, setMessage] = useState('')
+  const [now, setNow] = useState(Date.now())
 
-  // Force re-render every 30s to update "time ago" text
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 30000)
     return () => clearInterval(interval)
@@ -81,7 +74,8 @@ export default function SharePanel({ onFriendApproved, friends, myPosition, onFo
     const user = auth.currentUser
     if (!user) return
 
-    const { data: targetUser } = await supabase.from('users').select('firebase_uid').eq('email', email).maybeSingle()
+    const cleanEmail = email.trim()
+    const { data: targetUser } = await supabase.from('users').select('firebase_uid').ilike('email', cleanEmail).maybeSingle()
 
     if (!targetUser) {
       setMessage('User not found. Ensure they have logged in before.')
@@ -95,11 +89,14 @@ export default function SharePanel({ onFriendApproved, friends, myPosition, onFo
       return
     }
 
-    const { data: existingRequest } = await supabase.from('location_shares').select('id')
-      .eq('owner_uid', targetUser.firebase_uid).eq('viewer_uid', user.uid).maybeSingle()
+    // Check if any connection exists in ANY direction
+    const { data: existingRequest } = await supabase.from('location_shares')
+      .select('id')
+      .or(`and(owner_uid.eq.${targetUser.firebase_uid},viewer_uid.eq.${user.uid}),and(owner_uid.eq.${user.uid},viewer_uid.eq.${targetUser.firebase_uid})`)
+      .maybeSingle()
 
     if (existingRequest) {
-      setMessage('Request already sent.')
+      setMessage('A connection or request already exists.')
       setLoading(false)
       return
     }
@@ -116,8 +113,10 @@ export default function SharePanel({ onFriendApproved, friends, myPosition, onFo
   }
 
   const handleApprove = async (shareId: string) => {
+    // A single approved row now grants Mutual Tracking instantly!
     await supabase.from('location_shares').update({ status: 'approved' }).eq('id', shareId)
     fetchRequests()
+    onFriendApproved()
   }
 
   return (
@@ -125,20 +124,18 @@ export default function SharePanel({ onFriendApproved, friends, myPosition, onFo
       <div className="p-4 border-b border-gray-100 bg-gray-50 shrink-0">
         <h2 className="font-bold text-gray-800 flex items-center gap-2">
           <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-          Multi-User Network
+          Mutual Connections
         </h2>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-8">
-        
-        {/* Live Friends Map Section */}
         <div>
           <p className="text-sm text-gray-800 font-bold mb-3 flex items-center justify-between">
             Active on Map
             <span className="bg-blue-100 text-blue-700 py-0.5 px-2 rounded-full text-xs">{friends.length}</span>
           </p>
           {friends.length === 0 ? (
-            <p className="text-xs text-gray-400 italic bg-gray-50 p-3 rounded-lg border border-gray-100">No approved friends are currently broadcasting.</p>
+            <p className="text-xs text-gray-400 italic bg-gray-50 p-3 rounded-lg border border-gray-100">No friends are currently broadcasting.</p>
           ) : (
             <div className="space-y-2">
               {friends.map(friend => {
@@ -146,7 +143,7 @@ export default function SharePanel({ onFriendApproved, friends, myPosition, onFo
                 return (
                   <div key={friend.uid} onClick={() => onFocusFriend(friend.lat, friend.lng)} className="group bg-white p-3 rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-300 cursor-pointer transition-all flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-red-100 text-red-500 flex items-center justify-center font-bold text-lg shrink-0">
-                      {friend.name.charAt(0)}
+                      {friend.name.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-gray-800 text-sm truncate">{friend.name}</p>
@@ -166,14 +163,13 @@ export default function SharePanel({ onFriendApproved, friends, myPosition, onFo
 
         <hr className="border-gray-100" />
 
-        {/* Requests & Approvals */}
         <div>
-          <p className="text-sm text-gray-800 font-bold mb-3">Add Connections</p>
+          <p className="text-sm text-gray-800 font-bold mb-3">Request New Connection</p>
           <form onSubmit={handleRequestLocation} className="flex flex-col gap-2 mb-4">
             <input 
               type="email" required value={email} onChange={e => setEmail(e.target.value)}
               placeholder="friend@example.com"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
             />
             <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white text-sm font-semibold py-2 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 transition-colors">
               {loading ? 'Sending...' : 'Send Request'}
@@ -193,7 +189,7 @@ export default function SharePanel({ onFriendApproved, friends, myPosition, onFo
                   <p className="font-semibold text-gray-800">{req.users.name}</p>
                   <p className="text-gray-500 text-xs mb-3">{req.users.email}</p>
                   <button onClick={() => handleApprove(req.id)} className="bg-gray-800 text-white text-xs px-3 py-2 rounded-md font-medium hover:bg-black w-full transition-colors">
-                    Approve Request
+                    Approve Mutual Tracking
                   </button>
                 </div>
               ))}

@@ -1,3 +1,4 @@
+// src/app/dashboard/page.tsx
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
@@ -26,16 +27,16 @@ export default function DashboardPage() {
   const [route, setRoute] = useState<[number, number][]>([])
   const [friendsLocations, setFriendsLocations] = useState<Record<string, FriendLocation>>({})
   
-  // New Features State
   const [ghostMode, setGhostMode] = useState(false)
-  const ghostModeRef = useRef(false) // Used inside geolocation closure
+  const ghostModeRef = useRef(false)
   const [focusLocation, setFocusLocation] = useState<[number, number] | null>(null)
 
   const fetchFriendsLocations = async (uid: string) => {
+    // FIX: Get ALL approved mutual connections involving you
     const { data: shares } = await supabase
       .from('location_shares')
-      .select('owner_uid')
-      .eq('viewer_uid', uid)
+      .select('owner_uid, viewer_uid')
+      .or(`owner_uid.eq.${uid},viewer_uid.eq.${uid}`) // If you are owner OR viewer
       .eq('status', 'approved')
 
     if (!shares || shares.length === 0) {
@@ -43,11 +44,13 @@ export default function DashboardPage() {
       return
     }
 
-    const ownerUids = shares.map(s => s.owner_uid)
+    // Extract the UID of the OTHER person in each connection
+    const friendUids = Array.from(new Set(shares.map(s => s.owner_uid === uid ? s.viewer_uid : s.owner_uid)))
+
     const { data: friendsData } = await supabase
       .from('users')
       .select('firebase_uid, name, live_locations(latitude, longitude, updated_at)')
-      .in('firebase_uid', ownerUids)
+      .in('firebase_uid', friendUids)
 
     if (friendsData) {
       const formatted: Record<string, FriendLocation> = {}
@@ -79,10 +82,8 @@ export default function DashboardPage() {
     if (!user) return
 
     if (newVal) {
-      // Delete our location from public view if we go ghost
       await supabase.from('live_locations').delete().eq('firebase_uid', user.uid)
     } else if (position) {
-      // Immediately push location when coming back online
       await supabase.from('live_locations').upsert({
         firebase_uid: user.uid,
         latitude: position[0],
@@ -107,14 +108,12 @@ export default function DashboardPage() {
 
       fetchFriendsLocations(user.uid);
 
-      // HIGH-ACCURACY GPS ENGINE CONFIGURATION
       watchId = navigator.geolocation.watchPosition(
         async (pos) => {
           const { latitude, longitude } = pos.coords
           setPosition([latitude, longitude])
           setRoute((prevRoute) => [...prevRoute,[latitude, longitude]])
 
-          // Only broadcast to server if NOT in Ghost Mode
           if (!ghostModeRef.current) {
             await supabase.from('live_locations').upsert({
               firebase_uid: user.uid,
@@ -125,16 +124,11 @@ export default function DashboardPage() {
           }
         },
         (err) => console.warn("GPS Warning: ", err.message),
-        { 
-          enableHighAccuracy: true, // Forces GPS hardware usage
-          maximumAge: 0,            // Prevents using old cached locations
-          timeout: 10000            // Triggers error if no fix in 10s
-        }
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
       )
 
       sub = supabase.channel('public:live_locations')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'live_locations' }, (payload: any) => {
-          // If a friend deleted their location (went Ghost Mode), remove them from map
           if (payload.eventType === 'DELETE') {
              setFriendsLocations(prev => {
                 const updated = { ...prev }
@@ -143,7 +137,6 @@ export default function DashboardPage() {
              })
              return;
           }
-
           const newData = payload.new
           setFriendsLocations(prev => {
             if (prev[newData.firebase_uid]) {
@@ -179,7 +172,6 @@ export default function DashboardPage() {
           </div>
           
           <div className="flex items-center gap-3">
-            {/* Ghost Mode Toggle */}
             <button 
               onClick={toggleGhostMode}
               className={`text-sm font-semibold py-2 px-4 rounded-lg transition-colors border flex items-center gap-2 ${
